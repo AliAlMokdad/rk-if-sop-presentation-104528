@@ -1253,10 +1253,11 @@ const brand = document.getElementById('brand'), hit = document.getElementById('h
 const bgA = { top: new THREE.Color(), bot: new THREE.Color(), f1: new THREE.Color(), f2: new THREE.Color(), amt: 0, ctr: new THREE.Vector2(), spread: 1 };
 const bgB = { top: new THREE.Color(), bot: new THREE.Color(), f1: new THREE.Color(), f2: new THREE.Color(), amt: 0 };
 
-// where the presentation goes after the intro: ?next=<address> (http, https, or a page beside this file)
+// where the presentation goes after the intro: ?next=<page> (a page on this same site, or beside this file; any other
+// address is ignored, so the public page can never be used to send visitors somewhere else)
 const NEXT = (() => {
   const n = qs.get('next'); if (!n) return null;
-  try { const u = new URL(n, location.href); return (/^https?:$/.test(u.protocol) || u.protocol === location.protocol) ? u.href : null; } catch (e) { return null; }
+  try { const u = new URL(n, location.href); return (u.protocol === location.protocol && u.origin === location.origin) ? u.href : null; } catch (e) { return null; }
 })();
 
 function go(st) { state = st; t0 = clock; }
