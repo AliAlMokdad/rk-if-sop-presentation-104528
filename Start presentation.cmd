@@ -19,8 +19,10 @@ if errorlevel 1 (
 set "CHROME=%ProgramFiles%\Google\Chrome\Application\chrome.exe"
 if not exist "%CHROME%" set "CHROME=%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
 if not exist "%CHROME%" set "CHROME=%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"
+rem Its own clean Chrome profile: no extensions, no other tabs, nothing else asking for sound in the same browser.
+rem (Since a Windows Insider update on 3-4 Oct 2026, Chrome's audio part crashes in a loop whenever a tab or add-on wakes it.)
 if exist "%CHROME%" (
-  start "" "%CHROME%" "http://127.0.0.1:8765/index.html"
+  start "" "%CHROME%" --user-data-dir="%LOCALAPPDATA%\RK-presentation-chrome" --no-first-run --no-default-browser-check --new-window "http://127.0.0.1:8765/index.html"
 ) else (
   start "" "http://127.0.0.1:8765/index.html"
 )
