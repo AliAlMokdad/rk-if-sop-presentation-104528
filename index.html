@@ -1217,6 +1217,23 @@ function buildFlat() {
   scene.add(m);
   return m;
 }
+// at load, before the first moving frame: a stand-in logo and name, with everything hidden, drawn once into a single
+// pixel. On Windows (ANGLE on Direct3D) a glass program is only finished when it is first drawn, which used to stall the
+// first click by about a quarter of a second; now that cost is paid while the page loads. The stand-in is kept, not
+// disposed, so three keeps the programs. The cover image is decoded off the main thread at the same time.
+let mainWarm = null;
+function prewarmMain() {
+  if (mainWarm) return;
+  try {
+    mainWarm = buildFlat();
+    const hid = []; scene.traverse(o => { if (!o.visible) { hid.push(o); o.visible = true; } });
+    const sc = new THREE.Vector4(); renderer.getScissor(sc); const st = renderer.getScissorTest();
+    try { renderer.setScissorTest(true); renderer.setScissor(0, 0, 1, 1); renderer.render(scene, camera); }
+    finally { renderer.setScissor(sc); renderer.setScissorTest(st); for (const o of hid) o.visible = false; scene.remove(mainWarm); }
+  } catch (e) { /* nothing lost: the programs are finished on first use, as before */ }
+  try { const ci = document.querySelector('#deck .page img'); if (ci && ci.decode) ci.decode().catch(() => {}); } catch (e) {}
+}
+setTimeout(prewarmMain, 0);
 
 // ---------- sequence ----------
 const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -2911,7 +2928,12 @@ function paintGrain() {
 function warmBook() {
   if (!bR || book.warming) return;
   book.warming = true;
-  const idle = f => (window.requestIdleCallback ? requestIdleCallback(f, { timeout: 700 }) : setTimeout(f, 40));
+  // each quiet step waits while the slide moves (a presenter may click on before the book is ready), never more than 3 s
+  const idle = f => {
+    let tries = 0;
+    const run = () => { if (deck.classList.contains('moving') && tries++ < 12) { setTimeout(run, 250); return; } f(); };
+    if (window.requestIdleCallback) requestIdleCallback(run, { timeout: 700 }); else setTimeout(run, 40);
+  };
   paintCover(false);
   idle(() => {
     paintEndpaper();
@@ -2919,7 +2941,12 @@ function warmBook() {
     paintGrain();
     if (!seaTiles.length) buildSea();
     idle(() => {
-      const c = bR.compileAsync ? bR.compileAsync(bScene, bCam) : Promise.resolve(bR.compile(bScene, bCam));
+      // three compiles only what is visible: the hidden leaves, glass sea and shadows would otherwise compile, slowly on
+      // Windows, the moment the book opens. Shown for this one synchronous call only, never for a frame.
+      const hid = []; bScene.traverse(o => { if (!o.visible) { hid.push(o); o.visible = true; } });
+      let c;
+      try { c = bR.compileAsync ? bR.compileAsync(bScene, bCam) : Promise.resolve(bR.compile(bScene, bCam)); }
+      finally { for (const o of hid) o.visible = false; }
       c.catch(() => {}).then(() => idle(() => {
         if (!bR) return;
         bR.initTexture(coverTex);
@@ -2927,7 +2954,11 @@ function warmBook() {
           bR.initTexture(endTex);
           idle(() => {
             for (const s of seaTiles) if (!s.t.userData.up) { bR.initTexture(s.t); s.t.userData.up = true; }
-            if (!book.on) { bR.render(bScene, bCam); deck.classList.add('bookwarm', 'cinewarm'); setTimeout(() => deck.classList.remove('cinewarm'), 450); }   // drawn once, unseen, so the first opening costs nothing
+            if (!book.on) {   // drawn once, unseen, so the first opening costs nothing; the hidden parts too, so Direct3D finishes their programs now
+              const hid = []; bScene.traverse(o => { if (!o.visible) { hid.push(o); o.visible = true; } });
+              try { bR.render(bScene, bCam); } finally { for (const o of hid) o.visible = false; }
+              deck.classList.add('bookwarm', 'cinewarm'); setTimeout(() => deck.classList.remove('cinewarm'), 450);
+            }
           });
         });
       }));
